@@ -36,6 +36,7 @@
   --irrigation:#4fd9c5;
   --control:#c193f0;
   --fan:#79d778;
+  --exhaustfan:#3fae8a;
   --mixer:#f088b4;
   --curtain:#e0c05a;
   --heater:#f0895a;
@@ -467,6 +468,7 @@ const SESSION_KEY_UPDATES = [
 const TYPE_COLORS = {
   'Valves':'var(--valve)','Irrigation':'var(--irrigation)','Control':'var(--control)',
   'Mixer':'var(--mixer)','Curtains':'var(--curtain)','Fan':'var(--fan)','Heater':'var(--heater)',
+  'Exhaust Fan':'var(--exhaustfan)',
   'Control/Irrigation':'var(--control)','Control/Fan':'var(--control)'
 };
 function typeColor(t){ return TYPE_COLORS[t] || 'var(--default-type)'; }
@@ -488,7 +490,7 @@ const PANEL_FIELDS = [
   {key:'panelName', label:'Nombre del panel', full:true, required:true},
   {key:'house', label:'Casa', full:false},
   {key:'ip', label:'Dirección IP', full:false},
-  {key:'type', label:'Tipo', full:false, select:['Irrigation','Valves','Control','Curtains','Mixer','Fan','Heater','Control/Irrigation','Control/Fan','Otro']},
+  {key:'type', label:'Tipo', full:false, select:['Irrigation','Valves','Control','Curtains','Mixer','Fan','Exhaust Fan','Heater','Control/Irrigation','Control/Fan','Otro']},
   {key:'totalGates', label:'Salidas totales', full:false, type:'number'},
   {key:'maxActive', label:'Máx. activas', full:false, type:'number'},
   {key:'transformer', label:'Capacidad transformador', full:true},
