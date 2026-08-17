@@ -1,0 +1,13 @@
+{
+  "name": "guardian-inventario",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Guardian — Inventario de Automatización",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
+  }
+}
