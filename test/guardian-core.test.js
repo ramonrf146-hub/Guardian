@@ -17,6 +17,8 @@ const {
   buildRecordFromFieldValues,
   panelsToExportRows,
   sensorsToExportRows,
+  DEFAULT_FIREBASE_CONFIG,
+  resolveFirebaseConfig,
 } = GuardianCore;
 
 describe('escapeHtml / escapeAttr', () => {
@@ -305,5 +307,42 @@ describe('export row mapping', () => {
   it('maps sensor fields to their Spanish column headers', () => {
     const rows = sensorsToExportRows([{ area: 'Lago North', devEUI: 'abc123', appKey: 'key1', name: 'Sensor 1' }]);
     expect(rows[0]).toEqual({ 'Área': 'Lago North', 'DevEUI': 'abc123', 'Application Key': 'key1', 'Nombre': 'Sensor 1' });
+  });
+});
+
+describe('resolveFirebaseConfig', () => {
+  it('falls back to the default config when nothing is stored (a brand-new device/browser)', () => {
+    const result = resolveFirebaseConfig(null, DEFAULT_FIREBASE_CONFIG);
+    expect(result).toEqual(DEFAULT_FIREBASE_CONFIG);
+  });
+
+  it('falls back to the default config when the stored value is an empty string', () => {
+    const result = resolveFirebaseConfig('', DEFAULT_FIREBASE_CONFIG);
+    expect(result).toEqual(DEFAULT_FIREBASE_CONFIG);
+  });
+
+  it('prefers a manually-saved override over the default, so pointing at another project still works', () => {
+    const override = { apiKey: 'other-key', projectId: 'other-project' };
+    const result = resolveFirebaseConfig(JSON.stringify(override), DEFAULT_FIREBASE_CONFIG);
+    expect(result).toEqual(override);
+  });
+
+  it('falls back to the default when the stored value is not valid JSON', () => {
+    const result = resolveFirebaseConfig('{not valid json', DEFAULT_FIREBASE_CONFIG);
+    expect(result).toEqual(DEFAULT_FIREBASE_CONFIG);
+  });
+
+  it('falls back to the default when the stored value is missing required fields', () => {
+    const result = resolveFirebaseConfig(JSON.stringify({ foo: 'bar' }), DEFAULT_FIREBASE_CONFIG);
+    expect(result).toEqual(DEFAULT_FIREBASE_CONFIG);
+  });
+
+  it('returns null when there is neither a stored config nor a default', () => {
+    expect(resolveFirebaseConfig(null, null)).toBeNull();
+  });
+
+  it('ships with the real Guardian Firebase project as the built-in default', () => {
+    expect(DEFAULT_FIREBASE_CONFIG.projectId).toBe('guardian-inventario');
+    expect(DEFAULT_FIREBASE_CONFIG.apiKey).toBeTruthy();
   });
 });
