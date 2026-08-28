@@ -417,6 +417,7 @@ tbody tr:hover td{color:var(--text);}
    guardian-core.js (loaded above as a classic script) so they can be unit tested with Vitest. */
 const {
   TYPE_COLORS, typeColor,
+  DEFAULT_FIREBASE_CONFIG, resolveFirebaseConfig,
   SEED_PANELS, SEED_SENSORS, NEW_SENSORS_GEERLINGS, NEW_SENSORS_ENV_CNF_MIST, NEW_SENSORS_LAGO_NORTH_2,
   SESSION_KEY_UPDATES, APP_KEY_UPDATES,
   migratePanelsArray, migrateSensorsArray,
@@ -484,8 +485,8 @@ const STORE = {
 function tryInitFirebase(){
   try{
     const cfgStr = localStorage.getItem('guardian_fb_config');
-    if(!cfgStr) return false;
-    const cfg = JSON.parse(cfgStr);
+    const cfg = resolveFirebaseConfig(cfgStr, DEFAULT_FIREBASE_CONFIG);
+    if(!cfg) return false;
     if(typeof firebase === 'undefined') return false;
     if(!firebase.apps.length){ firebase.initializeApp(cfg); }
     db = firebase.firestore();
@@ -1007,10 +1008,10 @@ function openSyncModal(){
   const box = document.getElementById('syncStatusBox');
   const input = document.getElementById('fbConfigInput');
   const disconnectBtn = document.getElementById('syncDisconnect');
-  if(FB_MODE && cfgStr){
+  if(FB_MODE){
     box.innerHTML = '<span style="color:var(--accent);">● Conectado.</span> Todos los dispositivos que usen esta misma configuración ven y editan los mismos datos, en tiempo real.';
-    input.value = cfgStr;
-    disconnectBtn.style.display='inline-flex';
+    input.value = cfgStr || JSON.stringify(DEFAULT_FIREBASE_CONFIG, null, 2);
+    disconnectBtn.style.display = cfgStr ? 'inline-flex' : 'none';
   } else {
     box.innerHTML = 'Aún en modo local (solo este navegador). Pega la configuración de tu proyecto de Firebase para sincronizar entre personas y dispositivos.';
     input.value = cfgStr || '';

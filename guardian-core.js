@@ -76,6 +76,35 @@ const TYPE_COLORS = {
   'Control/Irrigation':'var(--control)','Control/Fan':'var(--control)'
 };
 function typeColor(t){ return TYPE_COLORS[t] || 'var(--default-type)'; }
+
+/* Configuración pública de Firebase (Firestore) de este proyecto. No es secreta: Firebase está
+   diseñado para que esta configuración viva en el código del cliente — la protección real de los
+   datos está en las Reglas de seguridad de Firestore, no en ocultar este objeto. Sirve como valor
+   por defecto para que cualquier dispositivo se conecte solo, sin tener que pegar la configuración
+   a mano en la pantalla de "Sincronización". */
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBqrH-PkWtjlWVQYc4Bp6Y6d_-jb4ntsdE",
+  authDomain: "guardian-inventario.firebaseapp.com",
+  projectId: "guardian-inventario",
+  storageBucket: "guardian-inventario.firebasestorage.app",
+  messagingSenderId: "406540944484",
+  appId: "1:406540944484:web:dc28219c554832091c8b71",
+  measurementId: "G-15Z0ZVG0B0"
+};
+
+/* Decide qué configuración de Firebase usar: si el navegador tiene una guardada a mano (pantalla
+   de "Sincronización", para apuntar a OTRO proyecto de Firebase), esa gana. Si no hay nada guardado,
+   o el texto guardado no es una configuración válida, usa la configuración por defecto de arriba. */
+function resolveFirebaseConfig(storedConfigString, defaultConfig){
+  if(storedConfigString){
+    try{
+      const parsed = JSON.parse(storedConfigString);
+      if(parsed && parsed.apiKey && parsed.projectId) return parsed;
+    }catch(e){}
+  }
+  return defaultConfig || null;
+}
+
 /* Corrige datos de versiones anteriores (área "?" -> Premier 1, sensores faltantes de Lago) sin perder
    los registros que el usuario haya agregado o editado. Se usa tanto en modo local como al sembrar Firestore. */
 function migratePanelsArray(arr){
@@ -222,6 +251,7 @@ function sensorsToExportRows(sensors){
 
   return {
     TYPE_COLORS, typeColor,
+    DEFAULT_FIREBASE_CONFIG, resolveFirebaseConfig,
     SEED_PANELS, SEED_SENSORS, NEW_SENSORS_GEERLINGS, NEW_SENSORS_ENV_CNF_MIST, NEW_SENSORS_LAGO_NORTH_2,
     SESSION_KEY_UPDATES, APP_KEY_UPDATES,
     migratePanelsArray, migrateSensorsArray,
