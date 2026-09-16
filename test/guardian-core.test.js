@@ -15,8 +15,10 @@ const {
   computeStats,
   filterAndSortData,
   buildRecordFromFieldValues,
+  findDuplicateSensorByDevEUI,
   panelsToExportRows,
   sensorsToExportRows,
+  controllersToExportRows,
   DEFAULT_FIREBASE_CONFIG,
   resolveFirebaseConfig,
 } = GuardianCore;
@@ -190,27 +192,38 @@ describe('computeAreas', () => {
     const panels = [{ area: '' }, { area: null }, { area: 'Real' }];
     expect(computeAreas(panels, [])).toEqual(['Real']);
   });
+
+  it('also collects areas from controllers', () => {
+    const controllers = [{ area: 'Casa 5' }];
+    expect(computeAreas([], [], controllers)).toEqual(['Casa 5']);
+  });
 });
 
 describe('computeStats', () => {
-  it('sums totalGates and counts panels/sensors/areas', () => {
+  it('sums totalGates and counts panels/sensors/controllers/areas', () => {
     const panels = [
       { area: 'A', totalGates: 16 },
       { area: 'A', totalGates: 8 },
       { area: 'B', totalGates: '32' }, // stored as string, as it can arrive from a form field
     ];
     const sensors = [{ area: 'A' }, { area: 'C' }];
-    expect(computeStats(panels, sensors)).toEqual({
+    const controllers = [{ area: 'D' }];
+    expect(computeStats(panels, sensors, controllers)).toEqual({
       totalPanels: 3,
       totalGates: 56,
-      totalAreas: 3, // A, B, C
+      totalAreas: 4, // A, B, C, D
       totalSensors: 2,
+      totalControllers: 1,
     });
   });
 
   it('treats a missing/non-numeric totalGates as 0 instead of NaN', () => {
     const panels = [{ area: 'A', totalGates: null }, { area: 'A' }];
     expect(computeStats(panels, []).totalGates).toBe(0);
+  });
+
+  it('defaults totalControllers to 0 when no controllers are passed', () => {
+    expect(computeStats([], []).totalControllers).toBe(0);
   });
 });
 
@@ -308,6 +321,16 @@ describe('export row mapping', () => {
     const rows = sensorsToExportRows([{ area: 'Lago North', devEUI: 'abc123', appKey: 'key1', name: 'Sensor 1' }]);
     expect(rows[0]).toEqual({ 'Área': 'Lago North', 'DevEUI': 'abc123', 'Application Key': 'key1', 'Nombre': 'Sensor 1' });
   });
+
+  it('maps controller fields to their Spanish column headers', () => {
+    const rows = controllersToExportRows([
+      { area: 'Casa 5', name: 'Controlador Casa 5', ipInternet: '10.0.0.1', ipModbus: '10.0.0.2', ipDragino: '10.0.0.3', docker: 'Sí', user: 'admin' },
+    ]);
+    expect(rows[0]).toEqual({
+      'Área': 'Casa 5', 'Nombre': 'Controlador Casa 5', 'IP Internet': '10.0.0.1',
+      'IP Modbus': '10.0.0.2', 'IP Dragino': '10.0.0.3', 'Docker': 'Sí', 'Usuario': 'admin',
+    });
+  });
 });
 
 describe('resolveFirebaseConfig', () => {
@@ -344,5 +367,38 @@ describe('resolveFirebaseConfig', () => {
   it('ships with the real Guardian Firebase project as the built-in default', () => {
     expect(DEFAULT_FIREBASE_CONFIG.projectId).toBe('guardian-inventario');
     expect(DEFAULT_FIREBASE_CONFIG.apiKey).toBeTruthy();
+  });
+});
+
+describe('findDuplicateSensorByDevEUI', () => {
+  const sensors = [
+    { _id: 's1', devEUI: 'a840411f218605fd', name: 'Dragino zone 1' },
+    { _id: 's2', devEUI: 'a8404131f18605fc', name: 'Dragino zone 2' },
+  ];
+
+  it('finds another sensor that already uses the same devEUI', () => {
+    const dup = findDuplicateSensorByDevEUI(sensors, 'a840411f218605fd', null);
+    expect(dup).not.toBeNull();
+    expect(dup._id).toBe('s1');
+  });
+
+  it('returns null when no other sensor uses that devEUI', () => {
+    expect(findDuplicateSensorByDevEUI(sensors, 'brand-new-eui', null)).toBeNull();
+  });
+
+  it('ignores the record being edited (its own devEUI is not a duplicate of itself)', () => {
+    const dup = findDuplicateSensorByDevEUI(sensors, 'a840411f218605fd', 's1');
+    expect(dup).toBeNull();
+  });
+
+  it('still flags a duplicate against a DIFFERENT record while editing one', () => {
+    const dup = findDuplicateSensorByDevEUI(sensors, 'a840411f218605fd', 's2');
+    expect(dup).not.toBeNull();
+    expect(dup._id).toBe('s1');
+  });
+
+  it('returns null for an empty or missing devEUI instead of matching everything', () => {
+    expect(findDuplicateSensorByDevEUI(sensors, '', null)).toBeNull();
+    expect(findDuplicateSensorByDevEUI(sensors, null, null)).toBeNull();
   });
 });

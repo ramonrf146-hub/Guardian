@@ -176,19 +176,21 @@ function escapeAttr(s){ return escapeHtml(s); }
 
 
 /* ---------------------------------------------------------- AREAS / STATS ---------------------------------------------------------- */
-function computeAreas(panels, sensors){
+function computeAreas(panels, sensors, controllers){
   const set = new Set();
   (panels||[]).forEach(p=>{ if(p.area) set.add(p.area); });
   (sensors||[]).forEach(s=>{ if(s.area) set.add(s.area); });
+  (controllers||[]).forEach(c=>{ if(c.area) set.add(c.area); });
   return Array.from(set).sort((a,b)=>a.localeCompare(b));
 }
 
-function computeStats(panels, sensors){
+function computeStats(panels, sensors, controllers){
   const totalPanels = (panels||[]).length;
   const totalGates = (panels||[]).reduce((s,p)=> s + (Number(p.totalGates)||0), 0);
-  const totalAreas = computeAreas(panels, sensors).length;
+  const totalAreas = computeAreas(panels, sensors, controllers).length;
   const totalSensors = (sensors||[]).length;
-  return { totalPanels, totalGates, totalAreas, totalSensors };
+  const totalControllers = (controllers||[]).length;
+  return { totalPanels, totalGates, totalAreas, totalSensors, totalControllers };
 }
 
 /* ---------------------------------------------------------- FILTER / SORT ---------------------------------------------------------- */
@@ -237,6 +239,14 @@ function buildRecordFromFieldValues(fields, values){
   return { rec, valid };
 }
 
+/* Busca otro sensor (distinto de excludeId, el que se está editando) que ya use el mismo DevEUI.
+   Cada sensor debe tener un DevEUI único: es la clave que usan las migraciones y actualizaciones
+   de claves para identificarlos, así que un duplicado corrompería esa lógica. */
+function findDuplicateSensorByDevEUI(sensors, devEUI, excludeId){
+  if(!devEUI) return null;
+  return (sensors||[]).find(s => s.devEUI === devEUI && s._id !== excludeId) || null;
+}
+
 /* ---------------------------------------------------------- EXPORT ROW MAPPING ---------------------------------------------------------- */
 function panelsToExportRows(panels){
   return (panels||[]).map(p=>({
@@ -247,6 +257,12 @@ function panelsToExportRows(panels){
 }
 function sensorsToExportRows(sensors){
   return (sensors||[]).map(s=>({'Área': s.area, 'DevEUI': s.devEUI, 'Application Key': s.appKey, 'Nombre': s.name}));
+}
+function controllersToExportRows(controllers){
+  return (controllers||[]).map(c=>({
+    'Área': c.area, 'Nombre': c.name, 'IP Internet': c.ipInternet, 'IP Modbus': c.ipModbus,
+    'IP Dragino': c.ipDragino, 'Docker': c.docker, 'Usuario': c.user
+  }));
 }
 
   return {
@@ -261,6 +277,7 @@ function sensorsToExportRows(sensors){
     computeAreas, computeStats,
     filterAndSortData,
     buildRecordFromFieldValues,
-    panelsToExportRows, sensorsToExportRows
+    findDuplicateSensorByDevEUI,
+    panelsToExportRows, sensorsToExportRows, controllersToExportRows
   };
 });
