@@ -460,7 +460,9 @@ const SENSOR_FIELDS = [
   {key:'area', label:'Área', full:true, required:true},
   {key:'devEUI', label:'DevEUI', full:true, required:true},
   {key:'appKey', label:'Application Key', full:true},
-  {key:'name', label:'Nombre', full:true, required:true}
+  {key:'name', label:'Nombre', full:true, required:true},
+  {key:'atPin', label:'AT PIN', full:false},
+  {key:'otaPin', label:'OTA PIN', full:false}
 ];
 const CONTROLLER_FIELDS = [
   {key:'area', label:'Área', full:false, required:true},
@@ -739,7 +741,7 @@ function renderTable(){
       {key:'_actions', label:''}
     ];
   } else if(activeTab==='sensors'){
-    cols = [{key:'area', label:'Área'}, {key:'devEUI', label:'DevEUI'}, {key:'appKey', label:'Application Key'}, {key:'name', label:'Nombre'}, {key:'_actions', label:''}];
+    cols = [{key:'area', label:'Área'}, {key:'devEUI', label:'DevEUI'}, {key:'appKey', label:'Application Key'}, {key:'name', label:'Nombre'}, {key:'atPin', label:'AT PIN'}, {key:'otaPin', label:'OTA PIN'}, {key:'_actions', label:''}];
   } else {
     cols = [
       {key:'area', label:'Área'}, {key:'name', label:'Nombre'}, {key:'ipInternet', label:'IP Internet'},
@@ -795,6 +797,8 @@ function renderTable(){
         <td class="mono-id" data-label="DevEUI">${val(s.devEUI)}</td>
         <td class="mono-id" data-label="Application Key">${val(s.appKey)}</td>
         <td data-label="Nombre">${escapeHtml(s.name||'')}</td>
+        <td class="mono-id" data-label="AT PIN">${val(s.atPin)}</td>
+        <td class="mono-id" data-label="OTA PIN">${val(s.otaPin)}</td>
         <td class="row-actions-cell"><div class="row-actions">
           <div class="icon-btn" data-edit="${s._id}" title="Editar">${editIcon()}</div>
           <div class="icon-btn" data-del="${s._id}" title="Eliminar">${trashIcon()}</div>
