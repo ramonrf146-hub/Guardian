@@ -466,10 +466,12 @@ const CONTROLLER_FIELDS = [
   {key:'area', label:'Área', full:false, required:true},
   {key:'name', label:'Nombre', full:true, required:true},
   {key:'ipInternet', label:'IP Internet', full:false},
+  {key:'ipLocal', label:'IP Local', full:false},
   {key:'ipModbus', label:'IP Modbus', full:false},
   {key:'ipDragino', label:'IP Dragino', full:false},
   {key:'docker', label:'Docker', full:false, select:['Sí','No']},
-  {key:'user', label:'Usuario', full:false}
+  {key:'user', label:'Usuario', full:false},
+  {key:'notes', label:'Notas', full:true, textarea:true}
 ];
 
 /* Etiquetas y prefijos de ID por pestaña, para no repetir ternarios de 3 vías en cada función. */
@@ -741,8 +743,8 @@ function renderTable(){
   } else {
     cols = [
       {key:'area', label:'Área'}, {key:'name', label:'Nombre'}, {key:'ipInternet', label:'IP Internet'},
-      {key:'ipModbus', label:'IP Modbus'}, {key:'ipDragino', label:'IP Dragino'}, {key:'docker', label:'Docker'},
-      {key:'user', label:'Usuario'}, {key:'_actions', label:''}
+      {key:'ipLocal', label:'IP Local'}, {key:'ipModbus', label:'IP Modbus'}, {key:'ipDragino', label:'IP Dragino'},
+      {key:'docker', label:'Docker'}, {key:'user', label:'Usuario'}, {key:'notes', label:'Notas'}, {key:'_actions', label:''}
     ];
   }
 
@@ -805,10 +807,12 @@ function renderTable(){
         <td data-label="Área">${val(c.area)}</td>
         <td data-label="Nombre">${escapeHtml(c.name||'')}</td>
         <td class="mono-id" data-label="IP Internet">${val(c.ipInternet)}</td>
+        <td class="mono-id" data-label="IP Local">${val(c.ipLocal)}</td>
         <td class="mono-id" data-label="IP Modbus">${val(c.ipModbus)}</td>
         <td class="mono-id" data-label="IP Dragino">${val(c.ipDragino)}</td>
         <td data-label="Docker">${val(c.docker)}</td>
         <td data-label="Usuario">${val(c.user)}</td>
+        <td class="notes-cell" data-label="Notas" title="${escapeAttr(c.notes||'')}">${val(c.notes)}</td>
         <td class="row-actions-cell"><div class="row-actions">
           <div class="icon-btn" data-edit="${c._id}" title="Editar">${editIcon()}</div>
           <div class="icon-btn" data-del="${c._id}" title="Eliminar">${trashIcon()}</div>
