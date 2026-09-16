@@ -15,6 +15,7 @@ const {
   computeStats,
   filterAndSortData,
   buildRecordFromFieldValues,
+  findDuplicateSensorByDevEUI,
   panelsToExportRows,
   sensorsToExportRows,
   DEFAULT_FIREBASE_CONFIG,
@@ -344,5 +345,38 @@ describe('resolveFirebaseConfig', () => {
   it('ships with the real Guardian Firebase project as the built-in default', () => {
     expect(DEFAULT_FIREBASE_CONFIG.projectId).toBe('guardian-inventario');
     expect(DEFAULT_FIREBASE_CONFIG.apiKey).toBeTruthy();
+  });
+});
+
+describe('findDuplicateSensorByDevEUI', () => {
+  const sensors = [
+    { _id: 's1', devEUI: 'a840411f218605fd', name: 'Dragino zone 1' },
+    { _id: 's2', devEUI: 'a8404131f18605fc', name: 'Dragino zone 2' },
+  ];
+
+  it('finds another sensor that already uses the same devEUI', () => {
+    const dup = findDuplicateSensorByDevEUI(sensors, 'a840411f218605fd', null);
+    expect(dup).not.toBeNull();
+    expect(dup._id).toBe('s1');
+  });
+
+  it('returns null when no other sensor uses that devEUI', () => {
+    expect(findDuplicateSensorByDevEUI(sensors, 'brand-new-eui', null)).toBeNull();
+  });
+
+  it('ignores the record being edited (its own devEUI is not a duplicate of itself)', () => {
+    const dup = findDuplicateSensorByDevEUI(sensors, 'a840411f218605fd', 's1');
+    expect(dup).toBeNull();
+  });
+
+  it('still flags a duplicate against a DIFFERENT record while editing one', () => {
+    const dup = findDuplicateSensorByDevEUI(sensors, 'a840411f218605fd', 's2');
+    expect(dup).not.toBeNull();
+    expect(dup._id).toBe('s1');
+  });
+
+  it('returns null for an empty or missing devEUI instead of matching everything', () => {
+    expect(findDuplicateSensorByDevEUI(sensors, '', null)).toBeNull();
+    expect(findDuplicateSensorByDevEUI(sensors, null, null)).toBeNull();
   });
 });

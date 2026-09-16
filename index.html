@@ -427,6 +427,7 @@ const {
   computeAreas, computeStats,
   filterAndSortData,
   buildRecordFromFieldValues,
+  findDuplicateSensorByDevEUI,
   panelsToExportRows, sensorsToExportRows
 } = GuardianCore;
 
@@ -871,6 +872,11 @@ async function saveModal(){
   const { rec, valid } = buildRecordFromFieldValues(fields, values);
   if(!valid){ showToast('Completa los campos obligatorios', true); return; }
 
+  if(activeTab==='sensors'){
+    const dup = findDuplicateSensorByDevEUI(sensors, rec.devEUI, editingId);
+    if(dup){ showToast(`Este DevEUI ya está en uso por "${dup.name || 'otro sensor'}"`, true); return; }
+  }
+
   if(FB_MODE){
     const id = editingId || ((activeTab==='panels'?'p_':'s_') + Date.now() + Math.random().toString(36).slice(2,7));
     await db.collection(activeTab).doc(id).set(rec, {merge:true});
@@ -918,7 +924,7 @@ function exportXlsx(){
 let toastTimer;
 function showToast(msg, isError){
   const host = document.getElementById('toastHost');
-  host.innerHTML = `<div class="toast" style="${isError?'border-color:var(--danger)':''}">${msg}</div>`;
+  host.innerHTML = `<div class="toast" style="${isError?'border-color:var(--danger); background:rgba(232,105,122,0.14); color:var(--danger);':''}">${msg}</div>`;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(()=>{ host.innerHTML=''; }, 2600);
 }

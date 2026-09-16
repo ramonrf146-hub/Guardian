@@ -237,6 +237,14 @@ function buildRecordFromFieldValues(fields, values){
   return { rec, valid };
 }
 
+/* Busca otro sensor (distinto de excludeId, el que se está editando) que ya use el mismo DevEUI.
+   Cada sensor debe tener un DevEUI único: es la clave que usan las migraciones y actualizaciones
+   de claves para identificarlos, así que un duplicado corrompería esa lógica. */
+function findDuplicateSensorByDevEUI(sensors, devEUI, excludeId){
+  if(!devEUI) return null;
+  return (sensors||[]).find(s => s.devEUI === devEUI && s._id !== excludeId) || null;
+}
+
 /* ---------------------------------------------------------- EXPORT ROW MAPPING ---------------------------------------------------------- */
 function panelsToExportRows(panels){
   return (panels||[]).map(p=>({
@@ -261,6 +269,7 @@ function sensorsToExportRows(sensors){
     computeAreas, computeStats,
     filterAndSortData,
     buildRecordFromFieldValues,
+    findDuplicateSensorByDevEUI,
     panelsToExportRows, sensorsToExportRows
   };
 });
