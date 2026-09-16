@@ -256,7 +256,7 @@ function panelsToExportRows(panels){
   }));
 }
 function sensorsToExportRows(sensors){
-  return (sensors||[]).map(s=>({'Área': s.area, 'DevEUI': s.devEUI, 'Application Key': s.appKey, 'Nombre': s.name}));
+  return (sensors||[]).map(s=>({'Área': s.area, 'DevEUI': s.devEUI, 'Application Key': s.appKey, 'Nombre': s.name, 'AT PIN': s.atPin, 'OTA PIN': s.otaPin}));
 }
 function controllersToExportRows(controllers){
   return (controllers||[]).map(c=>({

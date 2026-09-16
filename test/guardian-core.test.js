@@ -318,8 +318,8 @@ describe('export row mapping', () => {
   });
 
   it('maps sensor fields to their Spanish column headers', () => {
-    const rows = sensorsToExportRows([{ area: 'Lago North', devEUI: 'abc123', appKey: 'key1', name: 'Sensor 1' }]);
-    expect(rows[0]).toEqual({ 'Área': 'Lago North', 'DevEUI': 'abc123', 'Application Key': 'key1', 'Nombre': 'Sensor 1' });
+    const rows = sensorsToExportRows([{ area: 'Lago North', devEUI: 'abc123', appKey: 'key1', name: 'Sensor 1', atPin: 'AT1', otaPin: 'OTA1' }]);
+    expect(rows[0]).toEqual({ 'Área': 'Lago North', 'DevEUI': 'abc123', 'Application Key': 'key1', 'Nombre': 'Sensor 1', 'AT PIN': 'AT1', 'OTA PIN': 'OTA1' });
   });
 
   it('maps controller fields to their Spanish column headers', () => {
