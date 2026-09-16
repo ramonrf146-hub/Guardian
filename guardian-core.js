@@ -260,8 +260,9 @@ function sensorsToExportRows(sensors){
 }
 function controllersToExportRows(controllers){
   return (controllers||[]).map(c=>({
-    'Área': c.area, 'Nombre': c.name, 'IP Internet': c.ipInternet, 'IP Modbus': c.ipModbus,
-    'IP Dragino': c.ipDragino, 'Docker': c.docker, 'Usuario': c.user
+    'Área': c.area, 'Nombre': c.name, 'IP Internet': c.ipInternet, 'IP Local': c.ipLocal,
+    'IP Modbus': c.ipModbus, 'IP Dragino': c.ipDragino, 'Docker': c.docker, 'Usuario': c.user,
+    'Notas': c.notes
   }));
 }
 

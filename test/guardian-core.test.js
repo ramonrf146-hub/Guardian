@@ -324,11 +324,12 @@ describe('export row mapping', () => {
 
   it('maps controller fields to their Spanish column headers', () => {
     const rows = controllersToExportRows([
-      { area: 'Casa 5', name: 'Controlador Casa 5', ipInternet: '10.0.0.1', ipModbus: '10.0.0.2', ipDragino: '10.0.0.3', docker: 'Sí', user: 'admin' },
+      { area: 'Casa 5', name: 'Controlador Casa 5', ipInternet: '10.0.0.1', ipLocal: '192.168.1.5', ipModbus: '10.0.0.2', ipDragino: '10.0.0.3', docker: 'Sí', user: 'admin', notes: 'Reiniciar semanalmente' },
     ]);
     expect(rows[0]).toEqual({
-      'Área': 'Casa 5', 'Nombre': 'Controlador Casa 5', 'IP Internet': '10.0.0.1',
+      'Área': 'Casa 5', 'Nombre': 'Controlador Casa 5', 'IP Internet': '10.0.0.1', 'IP Local': '192.168.1.5',
       'IP Modbus': '10.0.0.2', 'IP Dragino': '10.0.0.3', 'Docker': 'Sí', 'Usuario': 'admin',
+      'Notas': 'Reiniciar semanalmente',
     });
   });
 });
