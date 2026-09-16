@@ -326,6 +326,7 @@ tbody tr:hover td{color:var(--text);}
         <div class="tabs">
           <div class="tab active" data-tab="panels">Paneles</div>
           <div class="tab" data-tab="sensors">Sensores</div>
+          <div class="tab" data-tab="controllers">Controladores</div>
         </div>
         <div class="search-wrap">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -428,12 +429,13 @@ const {
   filterAndSortData,
   buildRecordFromFieldValues,
   findDuplicateSensorByDevEUI,
-  panelsToExportRows, sensorsToExportRows
+  panelsToExportRows, sensorsToExportRows, controllersToExportRows
 } = GuardianCore;
 
 /* ---------------------------------------------------------- STATE ---------------------------------------------------------- */
 let panels = [];
 let sensors = [];
+let controllers = [];
 let activeTab = 'panels';
 let activeArea = null; // null = all
 let searchTerm = '';
@@ -460,6 +462,19 @@ const SENSOR_FIELDS = [
   {key:'appKey', label:'Application Key', full:true},
   {key:'name', label:'Nombre', full:true, required:true}
 ];
+const CONTROLLER_FIELDS = [
+  {key:'area', label:'Área', full:false, required:true},
+  {key:'name', label:'Nombre', full:true, required:true},
+  {key:'ipInternet', label:'IP Internet', full:false},
+  {key:'ipModbus', label:'IP Modbus', full:false},
+  {key:'ipDragino', label:'IP Dragino', full:false},
+  {key:'docker', label:'Docker', full:false, select:['Sí','No']},
+  {key:'user', label:'Usuario', full:false}
+];
+
+/* Etiquetas y prefijos de ID por pestaña, para no repetir ternarios de 3 vías en cada función. */
+const TAB_LABELS = { panels:'panel', sensors:'sensor', controllers:'controlador' };
+const TAB_ID_PREFIX = { panels:'p_', sensors:'s_', controllers:'c_' };
 
 /* ---------------------------------------------------------- STORAGE ---------------------------------------------------------- */
 /* Modo local: window.storage (artefacto de Claude.ai) o localStorage (archivo abierto directamente).
@@ -554,14 +569,17 @@ async function loadLocalData(){
   const sessionKeyResult = applySessionKeyUpdatesArray(sensors);
   sensors = sessionKeyResult.arr;
   if(sensors.length !== before || appKeyResult.changed || sessionKeyResult.changed) await saveSensors();
+  const c = await STORE.get('controllers');
+  controllers = c ? JSON.parse(c) : [];
 }
 async function savePanels(){ await STORE.set('panels', JSON.stringify(panels)); }
 async function saveSensors(){ await STORE.set('sensors', JSON.stringify(sensors)); }
+async function saveControllers(){ await STORE.set('controllers', JSON.stringify(controllers)); }
 
 /* Modo nube: escucha cambios en tiempo real. La primera vez que una colección está vacía,
    la siembra con lo que ya hubiera en este navegador (o con los datos de fábrica). */
 function setupFirebaseListeners(){
-  let panelsFirstLoad = true, sensorsFirstLoad = true;
+  let panelsFirstLoad = true, sensorsFirstLoad = true, controllersFirstLoad = true;
   let geerlingsSensorsChecked = false;
 
   db.collection('panels').onSnapshot(async snap=>{
@@ -603,21 +621,48 @@ function setupFirebaseListeners(){
       applySessionKeyUpdatesFirestore();
     }
   }, err=>{ console.error(err); showToast('Error de sincronización — revisa las reglas de Firestore', true); });
+
+  db.collection('controllers').onSnapshot(async snap=>{
+    const arr = snap.docs.map(d=>({...d.data(), _id:d.id}));
+    if(controllersFirstLoad && arr.length===0){
+      controllersFirstLoad = false;
+      const localRaw = localStorage.getItem('guardian_controllers');
+      const base = localRaw ? JSON.parse(localRaw) : [];
+      if(base.length){
+        const batch = db.batch();
+        base.forEach(rec=>{ const {_id, ...data} = rec; batch.set(db.collection('controllers').doc(_id), data); });
+        await batch.commit();
+      }
+      return;
+    }
+    controllersFirstLoad = false;
+    controllers = arr;
+    renderAll();
+  }, err=>{ console.error(err); showToast('Error de sincronización — revisa las reglas de Firestore', true); });
 }
 
 /* ---------------------------------------------------------- RENDER ---------------------------------------------------------- */
-function currentData(){ return activeTab === 'panels' ? panels : sensors; }
-function currentFields(){ return activeTab === 'panels' ? PANEL_FIELDS : SENSOR_FIELDS; }
+function currentData(){
+  if(activeTab==='panels') return panels;
+  if(activeTab==='sensors') return sensors;
+  return controllers;
+}
+function currentFields(){
+  if(activeTab==='panels') return PANEL_FIELDS;
+  if(activeTab==='sensors') return SENSOR_FIELDS;
+  return CONTROLLER_FIELDS;
+}
 
-function getAreas(){ return computeAreas(panels, sensors); }
+function getAreas(){ return computeAreas(panels, sensors, controllers); }
 
 function renderStats(){
-  const { totalPanels, totalGates, totalAreas, totalSensors } = computeStats(panels, sensors);
+  const { totalPanels, totalGates, totalAreas, totalSensors, totalControllers } = computeStats(panels, sensors, controllers);
   const stats = [
     {num:totalPanels, label:'Paneles registrados'},
     {num:totalGates, label:'Salidas totales'},
     {num:totalAreas, label:'Áreas / fincas'},
-    {num:totalSensors, label:'Sensores'}
+    {num:totalSensors, label:'Sensores'},
+    {num:totalControllers, label:'Controladores'}
   ];
   document.getElementById('stats').innerHTML = stats.map(s=>`
     <div class="stat"><div class="num">${s.num}</div><div class="label">${s.label}</div></div>
@@ -691,8 +736,14 @@ function renderTable(){
       {key:'gates', label:'Salidas'}, {key:'transformer', label:'Transformador'}, {key:'notes', label:'Notas'},
       {key:'_actions', label:''}
     ];
-  } else {
+  } else if(activeTab==='sensors'){
     cols = [{key:'area', label:'Área'}, {key:'devEUI', label:'DevEUI'}, {key:'appKey', label:'Application Key'}, {key:'name', label:'Nombre'}, {key:'_actions', label:''}];
+  } else {
+    cols = [
+      {key:'area', label:'Área'}, {key:'name', label:'Nombre'}, {key:'ipInternet', label:'IP Internet'},
+      {key:'ipModbus', label:'IP Modbus'}, {key:'ipDragino', label:'IP Dragino'}, {key:'docker', label:'Docker'},
+      {key:'user', label:'Usuario'}, {key:'_actions', label:''}
+    ];
   }
 
   head.innerHTML = cols.map(c=>{
@@ -735,7 +786,7 @@ function renderTable(){
         </div></td>
       </tr>
     `).join('');
-  } else {
+  } else if(activeTab==='sensors'){
     body.innerHTML = data.map(s=>`
       <tr>
         <td data-label="Área">${val(s.area)}</td>
@@ -745,6 +796,22 @@ function renderTable(){
         <td class="row-actions-cell"><div class="row-actions">
           <div class="icon-btn" data-edit="${s._id}" title="Editar">${editIcon()}</div>
           <div class="icon-btn" data-del="${s._id}" title="Eliminar">${trashIcon()}</div>
+        </div></td>
+      </tr>
+    `).join('');
+  } else {
+    body.innerHTML = data.map(c=>`
+      <tr>
+        <td data-label="Área">${val(c.area)}</td>
+        <td data-label="Nombre">${escapeHtml(c.name||'')}</td>
+        <td class="mono-id" data-label="IP Internet">${val(c.ipInternet)}</td>
+        <td class="mono-id" data-label="IP Modbus">${val(c.ipModbus)}</td>
+        <td class="mono-id" data-label="IP Dragino">${val(c.ipDragino)}</td>
+        <td data-label="Docker">${val(c.docker)}</td>
+        <td data-label="Usuario">${val(c.user)}</td>
+        <td class="row-actions-cell"><div class="row-actions">
+          <div class="icon-btn" data-edit="${c._id}" title="Editar">${editIcon()}</div>
+          <div class="icon-btn" data-del="${c._id}" title="Eliminar">${trashIcon()}</div>
         </div></td>
       </tr>
     `).join('');
@@ -782,7 +849,7 @@ function renderMobileList(data){
         <div class="m-row-del" data-del="${p._id}">${trashIcon()}</div>
       </div>
     `).join('');
-  } else {
+  } else if(activeTab==='sensors'){
     mlist.innerHTML = data.map(s=>`
       <div class="m-row" data-edit="${s._id}">
         <div class="m-row-main">
@@ -793,6 +860,20 @@ function renderMobileList(data){
           </div>
         </div>
         <div class="m-row-del" data-del="${s._id}">${trashIcon()}</div>
+      </div>
+    `).join('');
+  } else {
+    mlist.innerHTML = data.map(c=>`
+      <div class="m-row" data-edit="${c._id}">
+        <div class="m-row-main">
+          <div class="m-row-title">${escapeHtml(c.name||'Controlador')}</div>
+          <div class="m-row-sub">
+            <span>${escapeHtml(c.area||'—')}</span>
+            ${c.ipInternet ? `<span>· ${escapeHtml(c.ipInternet)}</span>` : ''}
+            <span>· Docker: ${escapeHtml(c.docker||'—')}</span>
+          </div>
+        </div>
+        <div class="m-row-del" data-del="${c._id}">${trashIcon()}</div>
       </div>
     `).join('');
   }
@@ -824,7 +905,8 @@ async function deleteRecord(id){
     await db.collection(activeTab).doc(id).delete();
   } else {
     if(activeTab==='panels'){ panels = panels.filter(p=>p._id!==id); await savePanels(); }
-    else { sensors = sensors.filter(s=>s._id!==id); await saveSensors(); }
+    else if(activeTab==='sensors'){ sensors = sensors.filter(s=>s._id!==id); await saveSensors(); }
+    else { controllers = controllers.filter(c=>c._id!==id); await saveControllers(); }
   }
   showToast('Registro eliminado');
   if(!FB_MODE) renderAll();
@@ -838,9 +920,7 @@ function openModal(id){
   editingId = id || null;
   const fields = currentFields();
   const record = id ? currentData().find(r=>r._id===id) : {};
-  document.getElementById('modalTitle').textContent = id
-    ? (activeTab==='panels' ? 'Editar panel' : 'Editar sensor')
-    : (activeTab==='panels' ? 'Agregar panel' : 'Agregar sensor');
+  document.getElementById('modalTitle').textContent = (id ? 'Editar ' : 'Agregar ') + TAB_LABELS[activeTab];
 
   document.getElementById('modalBody').innerHTML = fields.map(f=>{
     const v = record[f.key] !== undefined && record[f.key] !== null ? record[f.key] : '';
@@ -878,26 +958,35 @@ async function saveModal(){
   }
 
   if(FB_MODE){
-    const id = editingId || ((activeTab==='panels'?'p_':'s_') + Date.now() + Math.random().toString(36).slice(2,7));
+    const id = editingId || (TAB_ID_PREFIX[activeTab] + Date.now() + Math.random().toString(36).slice(2,7));
     await db.collection(activeTab).doc(id).set(rec, {merge:true});
   } else if(activeTab==='panels'){
     if(editingId){
       const idx = panels.findIndex(p=>p._id===editingId);
       panels[idx] = {...panels[idx], ...rec};
     } else {
-      rec._id = 'p_' + Date.now() + Math.random().toString(36).slice(2,7);
+      rec._id = TAB_ID_PREFIX.panels + Date.now() + Math.random().toString(36).slice(2,7);
       panels.push(rec);
     }
     await savePanels();
-  } else {
+  } else if(activeTab==='sensors'){
     if(editingId){
       const idx = sensors.findIndex(s=>s._id===editingId);
       sensors[idx] = {...sensors[idx], ...rec};
     } else {
-      rec._id = 's_' + Date.now() + Math.random().toString(36).slice(2,7);
+      rec._id = TAB_ID_PREFIX.sensors + Date.now() + Math.random().toString(36).slice(2,7);
       sensors.push(rec);
     }
     await saveSensors();
+  } else {
+    if(editingId){
+      const idx = controllers.findIndex(c=>c._id===editingId);
+      controllers[idx] = {...controllers[idx], ...rec};
+    } else {
+      rec._id = TAB_ID_PREFIX.controllers + Date.now() + Math.random().toString(36).slice(2,7);
+      controllers.push(rec);
+    }
+    await saveControllers();
   }
   showToast(editingId ? 'Registro actualizado' : 'Registro agregado');
   closeModal();
@@ -909,10 +998,13 @@ function exportXlsx(){
   const wb = XLSX.utils.book_new();
   const panelRows = panelsToExportRows(panels);
   const sensorRows = sensorsToExportRows(sensors);
+  const controllerRows = controllersToExportRows(controllers);
   wb.SheetNames.push('Paneles');
   wb.Sheets['Paneles'] = XLSX.utils.json_to_sheet(panelRows);
   wb.SheetNames.push('Sensores');
   wb.Sheets['Sensores'] = XLSX.utils.json_to_sheet(sensorRows);
+  wb.SheetNames.push('Controladores');
+  wb.Sheets['Controladores'] = XLSX.utils.json_to_sheet(controllerRows);
   XLSX.writeFile(wb, 'Guardian_Inventario.xlsx');
   showToast('Exportado a Guardian_Inventario.xlsx');
 }
@@ -943,7 +1035,7 @@ document.querySelectorAll('.tab').forEach(t=>{
     t.classList.add('active');
     activeTab = t.dataset.tab;
     sortKey=null; searchTerm=''; document.getElementById('searchInput').value='';
-    document.getElementById('addBtn').textContent = activeTab==='panels' ? '+ Agregar panel' : '+ Agregar sensor';
+    document.getElementById('addBtn').textContent = '+ Agregar ' + TAB_LABELS[activeTab];
     renderAll();
   });
 });
@@ -961,9 +1053,9 @@ let renameTargetArea = null;
 
 function openRenameArea(areaName){
   renameTargetArea = areaName;
-  const count = panels.filter(p=>p.area===areaName).length + sensors.filter(s=>s.area===areaName).length;
+  const count = panels.filter(p=>p.area===areaName).length + sensors.filter(s=>s.area===areaName).length + controllers.filter(c=>c.area===areaName).length;
   document.getElementById('renameInput').value = areaName;
-  document.getElementById('renameHint').textContent = `Esto renombra el área en los ${count} registro(s) que la usan (paneles y sensores).`;
+  document.getElementById('renameHint').textContent = `Esto renombra el área en los ${count} registro(s) que la usan (paneles, sensores y controladores).`;
   document.getElementById('renameOverlay').style.display='flex';
   setTimeout(()=>{
     const input = document.getElementById('renameInput');
@@ -987,17 +1079,21 @@ async function confirmRenameArea(){
 
   const affectedPanels = panels.filter(p=>p.area===oldName);
   const affectedSensors = sensors.filter(s=>s.area===oldName);
+  const affectedControllers = controllers.filter(c=>c.area===oldName);
 
   if(FB_MODE){
     const batch = db.batch();
     affectedPanels.forEach(p=> batch.update(db.collection('panels').doc(p._id), {area:newName}));
     affectedSensors.forEach(s=> batch.update(db.collection('sensors').doc(s._id), {area:newName}));
+    affectedControllers.forEach(c=> batch.update(db.collection('controllers').doc(c._id), {area:newName}));
     await batch.commit();
   } else {
     panels.forEach(p=>{ if(p.area===oldName) p.area=newName; });
     sensors.forEach(s=>{ if(s.area===oldName) s.area=newName; });
+    controllers.forEach(c=>{ if(c.area===oldName) c.area=newName; });
     await savePanels();
     await saveSensors();
+    await saveControllers();
   }
 
   if(activeArea === oldName) activeArea = newName;

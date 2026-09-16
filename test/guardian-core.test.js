@@ -18,6 +18,7 @@ const {
   findDuplicateSensorByDevEUI,
   panelsToExportRows,
   sensorsToExportRows,
+  controllersToExportRows,
   DEFAULT_FIREBASE_CONFIG,
   resolveFirebaseConfig,
 } = GuardianCore;
@@ -191,27 +192,38 @@ describe('computeAreas', () => {
     const panels = [{ area: '' }, { area: null }, { area: 'Real' }];
     expect(computeAreas(panels, [])).toEqual(['Real']);
   });
+
+  it('also collects areas from controllers', () => {
+    const controllers = [{ area: 'Casa 5' }];
+    expect(computeAreas([], [], controllers)).toEqual(['Casa 5']);
+  });
 });
 
 describe('computeStats', () => {
-  it('sums totalGates and counts panels/sensors/areas', () => {
+  it('sums totalGates and counts panels/sensors/controllers/areas', () => {
     const panels = [
       { area: 'A', totalGates: 16 },
       { area: 'A', totalGates: 8 },
       { area: 'B', totalGates: '32' }, // stored as string, as it can arrive from a form field
     ];
     const sensors = [{ area: 'A' }, { area: 'C' }];
-    expect(computeStats(panels, sensors)).toEqual({
+    const controllers = [{ area: 'D' }];
+    expect(computeStats(panels, sensors, controllers)).toEqual({
       totalPanels: 3,
       totalGates: 56,
-      totalAreas: 3, // A, B, C
+      totalAreas: 4, // A, B, C, D
       totalSensors: 2,
+      totalControllers: 1,
     });
   });
 
   it('treats a missing/non-numeric totalGates as 0 instead of NaN', () => {
     const panels = [{ area: 'A', totalGates: null }, { area: 'A' }];
     expect(computeStats(panels, []).totalGates).toBe(0);
+  });
+
+  it('defaults totalControllers to 0 when no controllers are passed', () => {
+    expect(computeStats([], []).totalControllers).toBe(0);
   });
 });
 
@@ -308,6 +320,16 @@ describe('export row mapping', () => {
   it('maps sensor fields to their Spanish column headers', () => {
     const rows = sensorsToExportRows([{ area: 'Lago North', devEUI: 'abc123', appKey: 'key1', name: 'Sensor 1' }]);
     expect(rows[0]).toEqual({ 'Área': 'Lago North', 'DevEUI': 'abc123', 'Application Key': 'key1', 'Nombre': 'Sensor 1' });
+  });
+
+  it('maps controller fields to their Spanish column headers', () => {
+    const rows = controllersToExportRows([
+      { area: 'Casa 5', name: 'Controlador Casa 5', ipInternet: '10.0.0.1', ipModbus: '10.0.0.2', ipDragino: '10.0.0.3', docker: 'Sí', user: 'admin' },
+    ]);
+    expect(rows[0]).toEqual({
+      'Área': 'Casa 5', 'Nombre': 'Controlador Casa 5', 'IP Internet': '10.0.0.1',
+      'IP Modbus': '10.0.0.2', 'IP Dragino': '10.0.0.3', 'Docker': 'Sí', 'Usuario': 'admin',
+    });
   });
 });
 
