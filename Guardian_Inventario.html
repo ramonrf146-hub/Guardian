@@ -93,6 +93,8 @@ body{
 
 /* layout */
 .layout{display:grid; grid-template-columns:220px 1fr; gap:16px;}
+.layout.no-sidebar{grid-template-columns:1fr;}
+.layout.no-sidebar #areaPanelBox{display:none;}
 @media (max-width:840px){ .layout{grid-template-columns:1fr;} }
 
 .panel-box{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);}
@@ -282,6 +284,11 @@ tbody tr:hover td{color:var(--text);}
   }
   .m-row-del.confirm-del{color:var(--danger); border:1px solid var(--danger);}
   .m-row-del svg{width:15px; height:15px;}
+  .m-row-copy{
+    width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:2px;
+    color:var(--text-faint); flex-shrink:0;
+  }
+  .m-row-copy svg{width:15px; height:15px;}
   .m-empty{padding:50px 16px; text-align:center; color:var(--text-faint); font-size:12px;}
 
   /* modal a pantalla completa, un solo campo por fila */
@@ -312,8 +319,8 @@ tbody tr:hover td{color:var(--text);}
 
   <div class="stats" id="stats"></div>
 
-  <div class="layout">
-    <div class="panel-box">
+  <div class="layout" id="layoutGrid">
+    <div class="panel-box" id="areaPanelBox">
       <div class="panel-box-head" id="areaToggle">
         <span>Áreas <span id="areaCount"></span></span>
         <svg id="areaChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
@@ -327,6 +334,7 @@ tbody tr:hover td{color:var(--text);}
           <div class="tab active" data-tab="panels">Paneles</div>
           <div class="tab" data-tab="sensors">Sensores</div>
           <div class="tab" data-tab="controllers">Controladores</div>
+          <div class="tab" data-tab="deviceProfiles">Perfiles</div>
         </div>
         <div class="search-wrap">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -429,13 +437,14 @@ const {
   filterAndSortData,
   buildRecordFromFieldValues,
   findDuplicateSensorByDevEUI,
-  panelsToExportRows, sensorsToExportRows, controllersToExportRows
+  panelsToExportRows, sensorsToExportRows, controllersToExportRows, deviceProfilesToExportRows
 } = GuardianCore;
 
 /* ---------------------------------------------------------- STATE ---------------------------------------------------------- */
 let panels = [];
 let sensors = [];
 let controllers = [];
+let deviceProfiles = [];
 let activeTab = 'panels';
 let activeArea = null; // null = all
 let searchTerm = '';
@@ -477,8 +486,14 @@ const CONTROLLER_FIELDS = [
 ];
 
 /* Etiquetas y prefijos de ID por pestaña, para no repetir ternarios de 3 vías en cada función. */
-const TAB_LABELS = { panels:'panel', sensors:'sensor', controllers:'controlador' };
-const TAB_ID_PREFIX = { panels:'p_', sensors:'s_', controllers:'c_' };
+const TAB_LABELS = { panels:'panel', sensors:'sensor', controllers:'controlador', deviceProfiles:'perfil' };
+const TAB_ID_PREFIX = { panels:'p_', sensors:'s_', controllers:'c_', deviceProfiles:'dp_' };
+/* Perfiles no depende de un área: es una lista general de códigos reutilizables entre sensores. */
+const TABS_WITHOUT_AREA = new Set(['deviceProfiles']);
+const DEVICE_PROFILE_FIELDS = [
+  {key:'name', label:'Nombre', full:true, required:true},
+  {key:'code', label:'Código', full:true, textarea:true, required:true}
+];
 
 /* ---------------------------------------------------------- STORAGE ---------------------------------------------------------- */
 /* Modo local: window.storage (artefacto de Claude.ai) o localStorage (archivo abierto directamente).
@@ -575,15 +590,18 @@ async function loadLocalData(){
   if(sensors.length !== before || appKeyResult.changed || sessionKeyResult.changed) await saveSensors();
   const c = await STORE.get('controllers');
   controllers = c ? JSON.parse(c) : [];
+  const dp = await STORE.get('deviceProfiles');
+  deviceProfiles = dp ? JSON.parse(dp) : [];
 }
 async function savePanels(){ await STORE.set('panels', JSON.stringify(panels)); }
 async function saveSensors(){ await STORE.set('sensors', JSON.stringify(sensors)); }
 async function saveControllers(){ await STORE.set('controllers', JSON.stringify(controllers)); }
+async function saveDeviceProfiles(){ await STORE.set('deviceProfiles', JSON.stringify(deviceProfiles)); }
 
 /* Modo nube: escucha cambios en tiempo real. La primera vez que una colección está vacía,
    la siembra con lo que ya hubiera en este navegador (o con los datos de fábrica). */
 function setupFirebaseListeners(){
-  let panelsFirstLoad = true, sensorsFirstLoad = true, controllersFirstLoad = true;
+  let panelsFirstLoad = true, sensorsFirstLoad = true, controllersFirstLoad = true, deviceProfilesFirstLoad = true;
   let geerlingsSensorsChecked = false;
 
   db.collection('panels').onSnapshot(async snap=>{
@@ -643,34 +661,56 @@ function setupFirebaseListeners(){
     controllers = arr;
     renderAll();
   }, err=>{ console.error(err); showToast('Error de sincronización — revisa las reglas de Firestore', true); });
+
+  db.collection('deviceProfiles').onSnapshot(async snap=>{
+    const arr = snap.docs.map(d=>({...d.data(), _id:d.id}));
+    if(deviceProfilesFirstLoad && arr.length===0){
+      deviceProfilesFirstLoad = false;
+      const localRaw = localStorage.getItem('guardian_deviceProfiles');
+      const base = localRaw ? JSON.parse(localRaw) : [];
+      if(base.length){
+        const batch = db.batch();
+        base.forEach(rec=>{ const {_id, ...data} = rec; batch.set(db.collection('deviceProfiles').doc(_id), data); });
+        await batch.commit();
+      }
+      return;
+    }
+    deviceProfilesFirstLoad = false;
+    deviceProfiles = arr;
+    renderAll();
+  }, err=>{ console.error(err); showToast('Error de sincronización — revisa las reglas de Firestore', true); });
 }
 
 /* ---------------------------------------------------------- RENDER ---------------------------------------------------------- */
 function currentData(){
   if(activeTab==='panels') return panels;
   if(activeTab==='sensors') return sensors;
-  return controllers;
+  if(activeTab==='controllers') return controllers;
+  return deviceProfiles;
 }
 function currentFields(){
   if(activeTab==='panels') return PANEL_FIELDS;
   if(activeTab==='sensors') return SENSOR_FIELDS;
-  return CONTROLLER_FIELDS;
+  if(activeTab==='controllers') return CONTROLLER_FIELDS;
+  return DEVICE_PROFILE_FIELDS;
 }
 
 function getAreas(){ return computeAreas(panels, sensors, controllers); }
 
 function renderStats(){
-  const { totalPanels, totalGates, totalAreas, totalSensors, totalControllers } = computeStats(panels, sensors, controllers);
+  const { totalPanels, totalGates, totalAreas, totalSensors, totalControllers, totalDeviceProfiles } = computeStats(panels, sensors, controllers, deviceProfiles);
   const stats = [
     {num:totalPanels, label:'Paneles registrados'},
     {num:totalGates, label:'Salidas totales'},
     {num:totalAreas, label:'Áreas / fincas'},
     {num:totalSensors, label:'Sensores'},
-    {num:totalControllers, label:'Controladores'}
+    {num:totalControllers, label:'Controladores'},
+    {num:totalDeviceProfiles, label:'Perfiles'}
   ];
   document.getElementById('stats').innerHTML = stats.map(s=>`
     <div class="stat"><div class="num">${s.num}</div><div class="label">${s.label}</div></div>
   `).join('');
+  document.getElementById('layoutGrid').classList.toggle('no-sidebar', TABS_WITHOUT_AREA.has(activeTab));
 }
 
 function renderAreaList(){
@@ -742,12 +782,14 @@ function renderTable(){
     ];
   } else if(activeTab==='sensors'){
     cols = [{key:'area', label:'Área'}, {key:'devEUI', label:'DevEUI'}, {key:'appKey', label:'Application Key'}, {key:'name', label:'Nombre'}, {key:'atPin', label:'AT PIN'}, {key:'otaPin', label:'OTA PIN'}, {key:'_actions', label:''}];
-  } else {
+  } else if(activeTab==='controllers'){
     cols = [
       {key:'area', label:'Área'}, {key:'name', label:'Nombre'}, {key:'ipInternet', label:'IP Internet'},
       {key:'ipLocal', label:'IP Local'}, {key:'ipModbus', label:'IP Modbus'}, {key:'ipDragino', label:'IP Dragino'},
       {key:'docker', label:'Docker'}, {key:'user', label:'Usuario'}, {key:'notes', label:'Notas'}, {key:'_actions', label:''}
     ];
+  } else {
+    cols = [{key:'name', label:'Nombre'}, {key:'code', label:'Código'}, {key:'_actions', label:''}];
   }
 
   head.innerHTML = cols.map(c=>{
@@ -805,7 +847,7 @@ function renderTable(){
         </div></td>
       </tr>
     `).join('');
-  } else {
+  } else if(activeTab==='controllers'){
     body.innerHTML = data.map(c=>`
       <tr>
         <td data-label="Área">${val(c.area)}</td>
@@ -823,6 +865,18 @@ function renderTable(){
         </div></td>
       </tr>
     `).join('');
+  } else {
+    body.innerHTML = data.map(dp=>`
+      <tr>
+        <td data-label="Nombre">${escapeHtml(dp.name||'')}</td>
+        <td class="notes-cell" data-label="Código" title="${escapeAttr(dp.code||'')}">${val(dp.code)}</td>
+        <td class="row-actions-cell"><div class="row-actions">
+          <div class="icon-btn" data-copy="${dp._id}" title="Copiar código">${copyIcon()}</div>
+          <div class="icon-btn" data-edit="${dp._id}" title="Editar">${editIcon()}</div>
+          <div class="icon-btn" data-del="${dp._id}" title="Eliminar">${trashIcon()}</div>
+        </div></td>
+      </tr>
+    `).join('');
   }
 
   body.querySelectorAll('[data-edit]').forEach(el=>{
@@ -830,6 +884,13 @@ function renderTable(){
   });
   body.querySelectorAll('[data-del]').forEach(el=>{
     el.addEventListener('click', (e)=> handleDeleteClick(e, el));
+  });
+  body.querySelectorAll('[data-copy]').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const rec = currentData().find(r=>r._id===el.dataset.copy);
+      if(rec) copyText(rec.code);
+    });
   });
 
   renderMobileList(data);
@@ -870,7 +931,7 @@ function renderMobileList(data){
         <div class="m-row-del" data-del="${s._id}">${trashIcon()}</div>
       </div>
     `).join('');
-  } else {
+  } else if(activeTab==='controllers'){
     mlist.innerHTML = data.map(c=>`
       <div class="m-row" data-edit="${c._id}">
         <div class="m-row-main">
@@ -884,6 +945,17 @@ function renderMobileList(data){
         <div class="m-row-del" data-del="${c._id}">${trashIcon()}</div>
       </div>
     `).join('');
+  } else {
+    mlist.innerHTML = data.map(dp=>`
+      <div class="m-row" data-edit="${dp._id}">
+        <div class="m-row-main">
+          <div class="m-row-title">${escapeHtml(dp.name||'Perfil')}</div>
+          <div class="m-row-sub"><span>${escapeHtml((dp.code||'').slice(0,60))}${(dp.code||'').length>60?'…':''}</span></div>
+        </div>
+        <div class="m-row-copy" data-copy="${dp._id}" title="Copiar código">${copyIcon()}</div>
+        <div class="m-row-del" data-del="${dp._id}">${trashIcon()}</div>
+      </div>
+    `).join('');
   }
 
   mlist.querySelectorAll('.m-row').forEach(row=>{
@@ -891,6 +963,13 @@ function renderMobileList(data){
   });
   mlist.querySelectorAll('[data-del]').forEach(el=>{
     el.addEventListener('click', (e)=>{ e.stopPropagation(); handleDeleteClick(e, el); });
+  });
+  mlist.querySelectorAll('[data-copy]').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const rec = currentData().find(r=>r._id===el.dataset.copy);
+      if(rec) copyText(rec.code);
+    });
   });
 }
 
@@ -914,7 +993,8 @@ async function deleteRecord(id){
   } else {
     if(activeTab==='panels'){ panels = panels.filter(p=>p._id!==id); await savePanels(); }
     else if(activeTab==='sensors'){ sensors = sensors.filter(s=>s._id!==id); await saveSensors(); }
-    else { controllers = controllers.filter(c=>c._id!==id); await saveControllers(); }
+    else if(activeTab==='controllers'){ controllers = controllers.filter(c=>c._id!==id); await saveControllers(); }
+    else { deviceProfiles = deviceProfiles.filter(dp=>dp._id!==id); await saveDeviceProfiles(); }
   }
   showToast('Registro eliminado');
   if(!FB_MODE) renderAll();
@@ -922,6 +1002,31 @@ async function deleteRecord(id){
 
 function editIcon(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`; }
 function trashIcon(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>`; }
+function copyIcon(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="9" width="12" height="12" rx="1.5"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>`; }
+
+/* Copia texto al portapapeles. navigator.clipboard requiere un "contexto seguro" (https o localhost),
+   así que si la app está abierta como archivo local (file://) usamos el respaldo con execCommand. */
+async function copyText(text){
+  if(text===null || text===undefined || text===''){ showToast('No hay código para copiar', true); return; }
+  try{
+    await navigator.clipboard.writeText(text);
+    showToast('Código copiado');
+  }catch(e){
+    try{
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      showToast('Código copiado');
+    }catch(e2){
+      showToast('No se pudo copiar el código', true);
+    }
+  }
+}
 
 /* ---------------------------------------------------------- MODAL ---------------------------------------------------------- */
 function openModal(id){
@@ -986,7 +1091,7 @@ async function saveModal(){
       sensors.push(rec);
     }
     await saveSensors();
-  } else {
+  } else if(activeTab==='controllers'){
     if(editingId){
       const idx = controllers.findIndex(c=>c._id===editingId);
       controllers[idx] = {...controllers[idx], ...rec};
@@ -995,6 +1100,15 @@ async function saveModal(){
       controllers.push(rec);
     }
     await saveControllers();
+  } else {
+    if(editingId){
+      const idx = deviceProfiles.findIndex(dp=>dp._id===editingId);
+      deviceProfiles[idx] = {...deviceProfiles[idx], ...rec};
+    } else {
+      rec._id = TAB_ID_PREFIX.deviceProfiles + Date.now() + Math.random().toString(36).slice(2,7);
+      deviceProfiles.push(rec);
+    }
+    await saveDeviceProfiles();
   }
   showToast(editingId ? 'Registro actualizado' : 'Registro agregado');
   closeModal();
@@ -1007,12 +1121,15 @@ function exportXlsx(){
   const panelRows = panelsToExportRows(panels);
   const sensorRows = sensorsToExportRows(sensors);
   const controllerRows = controllersToExportRows(controllers);
+  const deviceProfileRows = deviceProfilesToExportRows(deviceProfiles);
   wb.SheetNames.push('Paneles');
   wb.Sheets['Paneles'] = XLSX.utils.json_to_sheet(panelRows);
   wb.SheetNames.push('Sensores');
   wb.Sheets['Sensores'] = XLSX.utils.json_to_sheet(sensorRows);
   wb.SheetNames.push('Controladores');
   wb.Sheets['Controladores'] = XLSX.utils.json_to_sheet(controllerRows);
+  wb.SheetNames.push('Perfiles');
+  wb.Sheets['Perfiles'] = XLSX.utils.json_to_sheet(deviceProfileRows);
   XLSX.writeFile(wb, 'Guardian_Inventario.xlsx');
   showToast('Exportado a Guardian_Inventario.xlsx');
 }

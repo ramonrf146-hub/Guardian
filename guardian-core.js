@@ -184,13 +184,14 @@ function computeAreas(panels, sensors, controllers){
   return Array.from(set).sort((a,b)=>a.localeCompare(b));
 }
 
-function computeStats(panels, sensors, controllers){
+function computeStats(panels, sensors, controllers, deviceProfiles){
   const totalPanels = (panels||[]).length;
   const totalGates = (panels||[]).reduce((s,p)=> s + (Number(p.totalGates)||0), 0);
   const totalAreas = computeAreas(panels, sensors, controllers).length;
   const totalSensors = (sensors||[]).length;
   const totalControllers = (controllers||[]).length;
-  return { totalPanels, totalGates, totalAreas, totalSensors, totalControllers };
+  const totalDeviceProfiles = (deviceProfiles||[]).length;
+  return { totalPanels, totalGates, totalAreas, totalSensors, totalControllers, totalDeviceProfiles };
 }
 
 /* ---------------------------------------------------------- FILTER / SORT ---------------------------------------------------------- */
@@ -204,7 +205,7 @@ function filterAndSortData(data, opts){
   const sortDir = opts.sortDir || 1;
 
   let result = (data||[]).slice();
-  if(activeArea) result = result.filter(r=>r.area===activeArea);
+  if(activeArea && activeTab!=='deviceProfiles') result = result.filter(r=>r.area===activeArea);
   if(activeTab==='panels' && typeFilterVal) result = result.filter(r=>r.type===typeFilterVal);
   if(searchTerm){
     const q = String(searchTerm).toLowerCase();
@@ -265,6 +266,9 @@ function controllersToExportRows(controllers){
     'Notas': c.notes
   }));
 }
+function deviceProfilesToExportRows(deviceProfiles){
+  return (deviceProfiles||[]).map(dp=>({'Nombre': dp.name, 'Código': dp.code}));
+}
 
   return {
     TYPE_COLORS, typeColor,
@@ -279,6 +283,6 @@ function controllersToExportRows(controllers){
     filterAndSortData,
     buildRecordFromFieldValues,
     findDuplicateSensorByDevEUI,
-    panelsToExportRows, sensorsToExportRows, controllersToExportRows
+    panelsToExportRows, sensorsToExportRows, controllersToExportRows, deviceProfilesToExportRows
   };
 });
