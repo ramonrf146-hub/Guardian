@@ -195,6 +195,7 @@ tbody tr:hover td{color:var(--text);}
   background:var(--surface); border:1px solid var(--border); border-radius:4px; width:100%; max-width:520px;
   max-height:90vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.5);
 }
+.modal.modal-wide{max-width:900px;}
 .modal-head{padding:14px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;}
 .modal-head h3{font-family:var(--display); font-size:15px; margin:0; font-weight:600;}
 .modal-head .close{cursor:pointer; color:var(--text-faint);}
@@ -209,6 +210,7 @@ tbody tr:hover td{color:var(--text);}
 }
 .field input:focus, .field select:focus, .field textarea:focus{outline:none; border-color:var(--accent);}
 .field textarea{resize:vertical; min-height:50px;}
+#f_code{min-height:380px; line-height:1.5;}
 .modal-foot{padding:14px 18px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:8px;}
 
 .toast{
@@ -361,7 +363,7 @@ tbody tr:hover td{color:var(--text);}
 </div>
 
 <div class="overlay" id="overlay" style="display:none;">
-  <div class="modal">
+  <div class="modal" id="mainModal">
     <div class="modal-head">
       <h3 id="modalTitle">Agregar panel</h3>
       <div class="close" id="modalClose">✕</div>
@@ -1034,6 +1036,7 @@ function openModal(id){
   const fields = currentFields();
   const record = id ? currentData().find(r=>r._id===id) : {};
   document.getElementById('modalTitle').textContent = (id ? 'Editar ' : 'Agregar ') + TAB_LABELS[activeTab];
+  document.getElementById('mainModal').classList.toggle('modal-wide', activeTab==='deviceProfiles');
 
   document.getElementById('modalBody').innerHTML = fields.map(f=>{
     const v = record[f.key] !== undefined && record[f.key] !== null ? record[f.key] : '';
