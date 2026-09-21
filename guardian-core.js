@@ -176,22 +176,24 @@ function escapeAttr(s){ return escapeHtml(s); }
 
 
 /* ---------------------------------------------------------- AREAS / STATS ---------------------------------------------------------- */
-function computeAreas(panels, sensors, controllers){
+function computeAreas(panels, sensors, controllers, iot){
   const set = new Set();
   (panels||[]).forEach(p=>{ if(p.area) set.add(p.area); });
   (sensors||[]).forEach(s=>{ if(s.area) set.add(s.area); });
   (controllers||[]).forEach(c=>{ if(c.area) set.add(c.area); });
+  (iot||[]).forEach(x=>{ if(x.area) set.add(x.area); });
   return Array.from(set).sort((a,b)=>a.localeCompare(b));
 }
 
-function computeStats(panels, sensors, controllers, deviceProfiles){
+function computeStats(panels, sensors, controllers, deviceProfiles, iot){
   const totalPanels = (panels||[]).length;
   const totalGates = (panels||[]).reduce((s,p)=> s + (Number(p.totalGates)||0), 0);
-  const totalAreas = computeAreas(panels, sensors, controllers).length;
+  const totalAreas = computeAreas(panels, sensors, controllers, iot).length;
   const totalSensors = (sensors||[]).length;
   const totalControllers = (controllers||[]).length;
   const totalDeviceProfiles = (deviceProfiles||[]).length;
-  return { totalPanels, totalGates, totalAreas, totalSensors, totalControllers, totalDeviceProfiles };
+  const totalIot = (iot||[]).length;
+  return { totalPanels, totalGates, totalAreas, totalSensors, totalControllers, totalDeviceProfiles, totalIot };
 }
 
 /* ---------------------------------------------------------- FILTER / SORT ---------------------------------------------------------- */
@@ -269,6 +271,12 @@ function controllersToExportRows(controllers){
 function deviceProfilesToExportRows(deviceProfiles){
   return (deviceProfiles||[]).map(dp=>({'Nombre': dp.name, 'Código': dp.code}));
 }
+function iotToExportRows(iot){
+  return (iot||[]).map(x=>({
+    'Área': x.area, 'Device ID': x.deviceId, 'IoT Hub': x.iotHub, 'SAS Key': x.sasKey,
+    'Area ID': x.areaId, 'Hub Device ID': x.hubDeviceId
+  }));
+}
 
   return {
     TYPE_COLORS, typeColor,
@@ -283,6 +291,6 @@ function deviceProfilesToExportRows(deviceProfiles){
     filterAndSortData,
     buildRecordFromFieldValues,
     findDuplicateSensorByDevEUI,
-    panelsToExportRows, sensorsToExportRows, controllersToExportRows, deviceProfilesToExportRows
+    panelsToExportRows, sensorsToExportRows, controllersToExportRows, deviceProfilesToExportRows, iotToExportRows
   };
 });
