@@ -19,6 +19,7 @@ const {
   panelsToExportRows,
   sensorsToExportRows,
   controllersToExportRows,
+  deviceProfilesToExportRows,
   DEFAULT_FIREBASE_CONFIG,
   resolveFirebaseConfig,
 } = GuardianCore;
@@ -200,7 +201,7 @@ describe('computeAreas', () => {
 });
 
 describe('computeStats', () => {
-  it('sums totalGates and counts panels/sensors/controllers/areas', () => {
+  it('sums totalGates and counts panels/sensors/controllers/deviceProfiles/areas', () => {
     const panels = [
       { area: 'A', totalGates: 16 },
       { area: 'A', totalGates: 8 },
@@ -208,12 +209,14 @@ describe('computeStats', () => {
     ];
     const sensors = [{ area: 'A' }, { area: 'C' }];
     const controllers = [{ area: 'D' }];
-    expect(computeStats(panels, sensors, controllers)).toEqual({
+    const deviceProfiles = [{ name: 'ESP32 v1' }, { name: 'ESP32 v2' }];
+    expect(computeStats(panels, sensors, controllers, deviceProfiles)).toEqual({
       totalPanels: 3,
       totalGates: 56,
       totalAreas: 4, // A, B, C, D
       totalSensors: 2,
       totalControllers: 1,
+      totalDeviceProfiles: 2,
     });
   });
 
@@ -271,6 +274,15 @@ describe('filterAndSortData', () => {
     const copy = panels.slice();
     filterAndSortData(panels, { sortKey: 'unitId' });
     expect(panels).toEqual(copy);
+  });
+
+  it('ignores activeArea for the deviceProfiles tab, which has no area concept', () => {
+    const deviceProfiles = [
+      { _id: 'dp1', name: 'ESP32 v1', code: 'AT+PROFILE=1' },
+      { _id: 'dp2', name: 'ESP32 v2', code: 'AT+PROFILE=2' },
+    ];
+    const result = filterAndSortData(deviceProfiles, { activeArea: 'Lago North', activeTab: 'deviceProfiles' });
+    expect(result.length).toBe(2);
   });
 });
 
@@ -331,6 +343,11 @@ describe('export row mapping', () => {
       'IP Modbus': '10.0.0.2', 'IP Dragino': '10.0.0.3', 'Docker': 'Sí', 'Usuario': 'admin',
       'Notas': 'Reiniciar semanalmente',
     });
+  });
+
+  it('maps device profile fields to their Spanish column headers', () => {
+    const rows = deviceProfilesToExportRows([{ name: 'ESP32 v1', code: 'AT+PROFILE=1\nAT+SAVE' }]);
+    expect(rows[0]).toEqual({ 'Nombre': 'ESP32 v1', 'Código': 'AT+PROFILE=1\nAT+SAVE' });
   });
 });
 
