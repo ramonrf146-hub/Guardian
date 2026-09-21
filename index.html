@@ -337,6 +337,7 @@ tbody tr:hover td{color:var(--text);}
           <div class="tab" data-tab="sensors">Sensores</div>
           <div class="tab" data-tab="controllers">Controladores</div>
           <div class="tab" data-tab="deviceProfiles">Perfiles</div>
+          <div class="tab" data-tab="iot">IoT</div>
         </div>
         <div class="search-wrap">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
@@ -439,7 +440,7 @@ const {
   filterAndSortData,
   buildRecordFromFieldValues,
   findDuplicateSensorByDevEUI,
-  panelsToExportRows, sensorsToExportRows, controllersToExportRows, deviceProfilesToExportRows
+  panelsToExportRows, sensorsToExportRows, controllersToExportRows, deviceProfilesToExportRows, iotToExportRows
 } = GuardianCore;
 
 /* ---------------------------------------------------------- STATE ---------------------------------------------------------- */
@@ -447,6 +448,7 @@ let panels = [];
 let sensors = [];
 let controllers = [];
 let deviceProfiles = [];
+let iot = [];
 let activeTab = 'panels';
 let activeArea = null; // null = all
 let searchTerm = '';
@@ -488,13 +490,21 @@ const CONTROLLER_FIELDS = [
 ];
 
 /* Etiquetas y prefijos de ID por pestaña, para no repetir ternarios de 3 vías en cada función. */
-const TAB_LABELS = { panels:'panel', sensors:'sensor', controllers:'controlador', deviceProfiles:'perfil' };
-const TAB_ID_PREFIX = { panels:'p_', sensors:'s_', controllers:'c_', deviceProfiles:'dp_' };
+const TAB_LABELS = { panels:'panel', sensors:'sensor', controllers:'controlador', deviceProfiles:'perfil', iot:'dispositivo IoT' };
+const TAB_ID_PREFIX = { panels:'p_', sensors:'s_', controllers:'c_', deviceProfiles:'dp_', iot:'iot_' };
 /* Perfiles no depende de un área: es una lista general de códigos reutilizables entre sensores. */
 const TABS_WITHOUT_AREA = new Set(['deviceProfiles']);
 const DEVICE_PROFILE_FIELDS = [
   {key:'name', label:'Nombre', full:true, required:true},
   {key:'code', label:'Código', full:true, textarea:true, required:true}
+];
+const IOT_FIELDS = [
+  {key:'area', label:'Área', full:false, required:true},
+  {key:'deviceId', label:'Device ID', full:false, required:true},
+  {key:'iotHub', label:'IoT Hub', full:false},
+  {key:'sasKey', label:'SAS Key', full:true},
+  {key:'areaId', label:'Area ID', full:false},
+  {key:'hubDeviceId', label:'Hub Device ID', full:false}
 ];
 
 /* ---------------------------------------------------------- STORAGE ---------------------------------------------------------- */
@@ -594,16 +604,19 @@ async function loadLocalData(){
   controllers = c ? JSON.parse(c) : [];
   const dp = await STORE.get('deviceProfiles');
   deviceProfiles = dp ? JSON.parse(dp) : [];
+  const io = await STORE.get('iot');
+  iot = io ? JSON.parse(io) : [];
 }
 async function savePanels(){ await STORE.set('panels', JSON.stringify(panels)); }
 async function saveSensors(){ await STORE.set('sensors', JSON.stringify(sensors)); }
 async function saveControllers(){ await STORE.set('controllers', JSON.stringify(controllers)); }
 async function saveDeviceProfiles(){ await STORE.set('deviceProfiles', JSON.stringify(deviceProfiles)); }
+async function saveIot(){ await STORE.set('iot', JSON.stringify(iot)); }
 
 /* Modo nube: escucha cambios en tiempo real. La primera vez que una colección está vacía,
    la siembra con lo que ya hubiera en este navegador (o con los datos de fábrica). */
 function setupFirebaseListeners(){
-  let panelsFirstLoad = true, sensorsFirstLoad = true, controllersFirstLoad = true, deviceProfilesFirstLoad = true;
+  let panelsFirstLoad = true, sensorsFirstLoad = true, controllersFirstLoad = true, deviceProfilesFirstLoad = true, iotFirstLoad = true;
   let geerlingsSensorsChecked = false;
 
   db.collection('panels').onSnapshot(async snap=>{
@@ -681,6 +694,24 @@ function setupFirebaseListeners(){
     deviceProfiles = arr;
     renderAll();
   }, err=>{ console.error(err); showToast('Error de sincronización — revisa las reglas de Firestore', true); });
+
+  db.collection('iot').onSnapshot(async snap=>{
+    const arr = snap.docs.map(d=>({...d.data(), _id:d.id}));
+    if(iotFirstLoad && arr.length===0){
+      iotFirstLoad = false;
+      const localRaw = localStorage.getItem('guardian_iot');
+      const base = localRaw ? JSON.parse(localRaw) : [];
+      if(base.length){
+        const batch = db.batch();
+        base.forEach(rec=>{ const {_id, ...data} = rec; batch.set(db.collection('iot').doc(_id), data); });
+        await batch.commit();
+      }
+      return;
+    }
+    iotFirstLoad = false;
+    iot = arr;
+    renderAll();
+  }, err=>{ console.error(err); showToast('Error de sincronización — revisa las reglas de Firestore', true); });
 }
 
 /* ---------------------------------------------------------- RENDER ---------------------------------------------------------- */
@@ -688,26 +719,29 @@ function currentData(){
   if(activeTab==='panels') return panels;
   if(activeTab==='sensors') return sensors;
   if(activeTab==='controllers') return controllers;
-  return deviceProfiles;
+  if(activeTab==='deviceProfiles') return deviceProfiles;
+  return iot;
 }
 function currentFields(){
   if(activeTab==='panels') return PANEL_FIELDS;
   if(activeTab==='sensors') return SENSOR_FIELDS;
   if(activeTab==='controllers') return CONTROLLER_FIELDS;
-  return DEVICE_PROFILE_FIELDS;
+  if(activeTab==='deviceProfiles') return DEVICE_PROFILE_FIELDS;
+  return IOT_FIELDS;
 }
 
-function getAreas(){ return computeAreas(panels, sensors, controllers); }
+function getAreas(){ return computeAreas(panels, sensors, controllers, iot); }
 
 function renderStats(){
-  const { totalPanels, totalGates, totalAreas, totalSensors, totalControllers, totalDeviceProfiles } = computeStats(panels, sensors, controllers, deviceProfiles);
+  const { totalPanels, totalGates, totalAreas, totalSensors, totalControllers, totalDeviceProfiles, totalIot } = computeStats(panels, sensors, controllers, deviceProfiles, iot);
   const stats = [
     {num:totalPanels, label:'Paneles registrados'},
     {num:totalGates, label:'Salidas totales'},
     {num:totalAreas, label:'Áreas / fincas'},
     {num:totalSensors, label:'Sensores'},
     {num:totalControllers, label:'Controladores'},
-    {num:totalDeviceProfiles, label:'Perfiles'}
+    {num:totalDeviceProfiles, label:'Perfiles'},
+    {num:totalIot, label:'Dispositivos IoT'}
   ];
   document.getElementById('stats').innerHTML = stats.map(s=>`
     <div class="stat"><div class="num">${s.num}</div><div class="label">${s.label}</div></div>
@@ -790,8 +824,14 @@ function renderTable(){
       {key:'ipLocal', label:'IP Local'}, {key:'ipModbus', label:'IP Modbus'}, {key:'ipDragino', label:'IP Dragino'},
       {key:'docker', label:'Docker'}, {key:'user', label:'Usuario'}, {key:'notes', label:'Notas'}, {key:'_actions', label:''}
     ];
-  } else {
+  } else if(activeTab==='deviceProfiles'){
     cols = [{key:'name', label:'Nombre'}, {key:'code', label:'Código'}, {key:'_actions', label:''}];
+  } else {
+    cols = [
+      {key:'area', label:'Área'}, {key:'deviceId', label:'Device ID'}, {key:'iotHub', label:'IoT Hub'},
+      {key:'sasKey', label:'SAS Key'}, {key:'areaId', label:'Area ID'}, {key:'hubDeviceId', label:'Hub Device ID'},
+      {key:'_actions', label:''}
+    ];
   }
 
   head.innerHTML = cols.map(c=>{
@@ -867,7 +907,7 @@ function renderTable(){
         </div></td>
       </tr>
     `).join('');
-  } else {
+  } else if(activeTab==='deviceProfiles'){
     body.innerHTML = data.map(dp=>`
       <tr>
         <td data-label="Nombre">${escapeHtml(dp.name||'')}</td>
@@ -876,6 +916,21 @@ function renderTable(){
           <div class="icon-btn" data-copy="${dp._id}" title="Copiar código">${copyIcon()}</div>
           <div class="icon-btn" data-edit="${dp._id}" title="Editar">${editIcon()}</div>
           <div class="icon-btn" data-del="${dp._id}" title="Eliminar">${trashIcon()}</div>
+        </div></td>
+      </tr>
+    `).join('');
+  } else {
+    body.innerHTML = data.map(x=>`
+      <tr>
+        <td data-label="Área">${val(x.area)}</td>
+        <td data-label="Device ID">${escapeHtml(x.deviceId||'')}</td>
+        <td class="mono-id" data-label="IoT Hub">${val(x.iotHub)}</td>
+        <td class="mono-id" data-label="SAS Key">${val(x.sasKey)}</td>
+        <td class="mono-id" data-label="Area ID">${val(x.areaId)}</td>
+        <td class="mono-id" data-label="Hub Device ID">${val(x.hubDeviceId)}</td>
+        <td class="row-actions-cell"><div class="row-actions">
+          <div class="icon-btn" data-edit="${x._id}" title="Editar">${editIcon()}</div>
+          <div class="icon-btn" data-del="${x._id}" title="Eliminar">${trashIcon()}</div>
         </div></td>
       </tr>
     `).join('');
@@ -947,7 +1002,7 @@ function renderMobileList(data){
         <div class="m-row-del" data-del="${c._id}">${trashIcon()}</div>
       </div>
     `).join('');
-  } else {
+  } else if(activeTab==='deviceProfiles'){
     mlist.innerHTML = data.map(dp=>`
       <div class="m-row" data-edit="${dp._id}">
         <div class="m-row-main">
@@ -956,6 +1011,19 @@ function renderMobileList(data){
         </div>
         <div class="m-row-copy" data-copy="${dp._id}" title="Copiar código">${copyIcon()}</div>
         <div class="m-row-del" data-del="${dp._id}">${trashIcon()}</div>
+      </div>
+    `).join('');
+  } else {
+    mlist.innerHTML = data.map(x=>`
+      <div class="m-row" data-edit="${x._id}">
+        <div class="m-row-main">
+          <div class="m-row-title">${escapeHtml(x.deviceId||'Dispositivo IoT')}</div>
+          <div class="m-row-sub">
+            <span>${escapeHtml(x.area||'—')}</span>
+            ${x.iotHub ? `<span>· ${escapeHtml(x.iotHub)}</span>` : ''}
+          </div>
+        </div>
+        <div class="m-row-del" data-del="${x._id}">${trashIcon()}</div>
       </div>
     `).join('');
   }
@@ -996,7 +1064,8 @@ async function deleteRecord(id){
     if(activeTab==='panels'){ panels = panels.filter(p=>p._id!==id); await savePanels(); }
     else if(activeTab==='sensors'){ sensors = sensors.filter(s=>s._id!==id); await saveSensors(); }
     else if(activeTab==='controllers'){ controllers = controllers.filter(c=>c._id!==id); await saveControllers(); }
-    else { deviceProfiles = deviceProfiles.filter(dp=>dp._id!==id); await saveDeviceProfiles(); }
+    else if(activeTab==='deviceProfiles'){ deviceProfiles = deviceProfiles.filter(dp=>dp._id!==id); await saveDeviceProfiles(); }
+    else { iot = iot.filter(x=>x._id!==id); await saveIot(); }
   }
   showToast('Registro eliminado');
   if(!FB_MODE) renderAll();
@@ -1103,7 +1172,7 @@ async function saveModal(){
       controllers.push(rec);
     }
     await saveControllers();
-  } else {
+  } else if(activeTab==='deviceProfiles'){
     if(editingId){
       const idx = deviceProfiles.findIndex(dp=>dp._id===editingId);
       deviceProfiles[idx] = {...deviceProfiles[idx], ...rec};
@@ -1112,6 +1181,15 @@ async function saveModal(){
       deviceProfiles.push(rec);
     }
     await saveDeviceProfiles();
+  } else {
+    if(editingId){
+      const idx = iot.findIndex(x=>x._id===editingId);
+      iot[idx] = {...iot[idx], ...rec};
+    } else {
+      rec._id = TAB_ID_PREFIX.iot + Date.now() + Math.random().toString(36).slice(2,7);
+      iot.push(rec);
+    }
+    await saveIot();
   }
   showToast(editingId ? 'Registro actualizado' : 'Registro agregado');
   closeModal();
@@ -1125,6 +1203,7 @@ function exportXlsx(){
   const sensorRows = sensorsToExportRows(sensors);
   const controllerRows = controllersToExportRows(controllers);
   const deviceProfileRows = deviceProfilesToExportRows(deviceProfiles);
+  const iotRows = iotToExportRows(iot);
   wb.SheetNames.push('Paneles');
   wb.Sheets['Paneles'] = XLSX.utils.json_to_sheet(panelRows);
   wb.SheetNames.push('Sensores');
@@ -1133,6 +1212,8 @@ function exportXlsx(){
   wb.Sheets['Controladores'] = XLSX.utils.json_to_sheet(controllerRows);
   wb.SheetNames.push('Perfiles');
   wb.Sheets['Perfiles'] = XLSX.utils.json_to_sheet(deviceProfileRows);
+  wb.SheetNames.push('IoT');
+  wb.Sheets['IoT'] = XLSX.utils.json_to_sheet(iotRows);
   XLSX.writeFile(wb, 'Guardian_Inventario.xlsx');
   showToast('Exportado a Guardian_Inventario.xlsx');
 }
@@ -1181,9 +1262,9 @@ let renameTargetArea = null;
 
 function openRenameArea(areaName){
   renameTargetArea = areaName;
-  const count = panels.filter(p=>p.area===areaName).length + sensors.filter(s=>s.area===areaName).length + controllers.filter(c=>c.area===areaName).length;
+  const count = panels.filter(p=>p.area===areaName).length + sensors.filter(s=>s.area===areaName).length + controllers.filter(c=>c.area===areaName).length + iot.filter(x=>x.area===areaName).length;
   document.getElementById('renameInput').value = areaName;
-  document.getElementById('renameHint').textContent = `Esto renombra el área en los ${count} registro(s) que la usan (paneles, sensores y controladores).`;
+  document.getElementById('renameHint').textContent = `Esto renombra el área en los ${count} registro(s) que la usan (paneles, sensores, controladores y dispositivos IoT).`;
   document.getElementById('renameOverlay').style.display='flex';
   setTimeout(()=>{
     const input = document.getElementById('renameInput');
@@ -1208,20 +1289,24 @@ async function confirmRenameArea(){
   const affectedPanels = panels.filter(p=>p.area===oldName);
   const affectedSensors = sensors.filter(s=>s.area===oldName);
   const affectedControllers = controllers.filter(c=>c.area===oldName);
+  const affectedIot = iot.filter(x=>x.area===oldName);
 
   if(FB_MODE){
     const batch = db.batch();
     affectedPanels.forEach(p=> batch.update(db.collection('panels').doc(p._id), {area:newName}));
     affectedSensors.forEach(s=> batch.update(db.collection('sensors').doc(s._id), {area:newName}));
     affectedControllers.forEach(c=> batch.update(db.collection('controllers').doc(c._id), {area:newName}));
+    affectedIot.forEach(x=> batch.update(db.collection('iot').doc(x._id), {area:newName}));
     await batch.commit();
   } else {
     panels.forEach(p=>{ if(p.area===oldName) p.area=newName; });
     sensors.forEach(s=>{ if(s.area===oldName) s.area=newName; });
     controllers.forEach(c=>{ if(c.area===oldName) c.area=newName; });
+    iot.forEach(x=>{ if(x.area===oldName) x.area=newName; });
     await savePanels();
     await saveSensors();
     await saveControllers();
+    await saveIot();
   }
 
   if(activeArea === oldName) activeArea = newName;

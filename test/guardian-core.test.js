@@ -20,6 +20,7 @@ const {
   sensorsToExportRows,
   controllersToExportRows,
   deviceProfilesToExportRows,
+  iotToExportRows,
   DEFAULT_FIREBASE_CONFIG,
   resolveFirebaseConfig,
 } = GuardianCore;
@@ -198,10 +199,15 @@ describe('computeAreas', () => {
     const controllers = [{ area: 'Casa 5' }];
     expect(computeAreas([], [], controllers)).toEqual(['Casa 5']);
   });
+
+  it('also collects areas from iot devices', () => {
+    const iot = [{ area: 'Casa 7' }];
+    expect(computeAreas([], [], [], iot)).toEqual(['Casa 7']);
+  });
 });
 
 describe('computeStats', () => {
-  it('sums totalGates and counts panels/sensors/controllers/deviceProfiles/areas', () => {
+  it('sums totalGates and counts panels/sensors/controllers/deviceProfiles/iot/areas', () => {
     const panels = [
       { area: 'A', totalGates: 16 },
       { area: 'A', totalGates: 8 },
@@ -210,13 +216,15 @@ describe('computeStats', () => {
     const sensors = [{ area: 'A' }, { area: 'C' }];
     const controllers = [{ area: 'D' }];
     const deviceProfiles = [{ name: 'ESP32 v1' }, { name: 'ESP32 v2' }];
-    expect(computeStats(panels, sensors, controllers, deviceProfiles)).toEqual({
+    const iot = [{ area: 'E', deviceId: 'dev1' }];
+    expect(computeStats(panels, sensors, controllers, deviceProfiles, iot)).toEqual({
       totalPanels: 3,
       totalGates: 56,
-      totalAreas: 4, // A, B, C, D
+      totalAreas: 5, // A, B, C, D, E
       totalSensors: 2,
       totalControllers: 1,
       totalDeviceProfiles: 2,
+      totalIot: 1,
     });
   });
 
@@ -227,6 +235,10 @@ describe('computeStats', () => {
 
   it('defaults totalControllers to 0 when no controllers are passed', () => {
     expect(computeStats([], []).totalControllers).toBe(0);
+  });
+
+  it('defaults totalIot to 0 when no iot devices are passed', () => {
+    expect(computeStats([], []).totalIot).toBe(0);
   });
 });
 
@@ -348,6 +360,16 @@ describe('export row mapping', () => {
   it('maps device profile fields to their Spanish column headers', () => {
     const rows = deviceProfilesToExportRows([{ name: 'ESP32 v1', code: 'AT+PROFILE=1\nAT+SAVE' }]);
     expect(rows[0]).toEqual({ 'Nombre': 'ESP32 v1', 'Código': 'AT+PROFILE=1\nAT+SAVE' });
+  });
+
+  it('maps iot fields to their Spanish column headers', () => {
+    const rows = iotToExportRows([
+      { area: 'Casa 5', deviceId: 'dev-1', iotHub: 'hub-1', sasKey: 'key-1', areaId: 'area-1', hubDeviceId: 'hubdev-1' },
+    ]);
+    expect(rows[0]).toEqual({
+      'Área': 'Casa 5', 'Device ID': 'dev-1', 'IoT Hub': 'hub-1', 'SAS Key': 'key-1',
+      'Area ID': 'area-1', 'Hub Device ID': 'hubdev-1',
+    });
   });
 });
 
